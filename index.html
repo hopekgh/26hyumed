@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<title>실습 스케줄러</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{margin:0;padding:0;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{border-radius:3px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+
+// ── DATA ──────────────────────────────────────────────────────────────
+const MEMBERS={
+A:{1:“송은우”,2:“이주영, 문정우”,3:“곽기범”,4:“김하운”,5:“신서현”,6:“이재후, 이용진”,7:“이민우”,8:“이정원”},
+B:{1:“이재현”,2:“조영하, 김민준”,3:“정진원”,4:“윤숙영”,5:“신승모”,6:“홍석준, 이지윤”,7:“박상혁”,8:“노정민”},
+C:{1:“박민규”,2:“양승은”,3:“고민혁”,4:“류혜승”,5:“황규민”,6:“김기윤, 이나형”,7:“최수민”,8:“임희주”},
+D:{1:“박기량”,2:“이진우”,3:“김민수”,4:“문경원”,5:“유상규”,6:“이지훈, 장서연”,7:“최승호”,8:“이다연”},
+E:{1:“김선영”,2:“박세현”,3:“유재섭”,4:“이단비”,5:“김성준”,6:“최연우, 장여정”,7:“임준영”,8:“이수빈”},
+F:{1:“하다을”,2:“박연수”,3:“장인제”,4:“정지헤”,5:“김연준”,6:“윤세종, 박소연”,7:“최영준”,8:“민유진”},
+G:{1:“김예리”,2:“김재형”,3:“박한국”,4:“이수현”,5:“전진규”,6:“윤제민, 배지윤”,7:“최조원”,8:“홍이수”},
+H:{1:“선민정”,2:“김제훈”,3:“하석민”,4:“김하늘”,5:“이광염”,6:“배준현, 이영선”,7:“정바다”,8:“김지인”},
+I:{1:“윤강한”,2:“김지한”,3:“송재근”,4:“양성은”,5:“이동윤”,6:“정재진, 이영은”,7:“황보준”,8:“김혜림”},
+};
+
+const NAME_LOOKUP={};
+Object.entries(MEMBERS).forEach(([g,nums])=>{
+Object.entries(nums).forEach(([num,nameStr])=>{
+nameStr.split(”,”).map(n=>n.trim()).forEach(name=>{
+NAME_LOOKUP[name]={group:g,number:parseInt(num)};
+});
+});
+});
+
+const RAW=[
+[“소화기내과1(서울)”,“A34”,“A34”,””,””,“C12”,“C34”,””,””,“B12”,“B34”,””,””,“G12”,“G34”,””,””,“I12”,“I34”,””,””,“H12”,“H34”,””,””,“D12”,“D34”,””,””,“F12”,“F34”,””,””,“E12”,“E34”,””,””],
+[“소화기내과2(서울)”,“A12”,“A12”,””,””,“C34”,“C12”,””,””,“B34”,“B12”,””,””,“G34”,“G12”,””,””,“I34”,“I12”,””,””,“H34”,“H12”,””,””,“D34”,“D12”,””,””,“F34”,“F12”,””,””,“E34”,“E12”,””,””],
+[“소화기내과1(구리)”,””,””,“A56”,“A78”,””,””,“C56”,“C78”,””,””,“B56”,“B78”,””,””,“G56”,“G78”,””,””,“I56”,“I78”,””,””,“H56”,“H78”,””,””,“D56”,“D78”,””,””,“F56”,“F78”,””,””,“E56”,“E78”],
+[“소화기내과2(구리)”,””,””,“A78”,“A56”,””,””,“C78”,“C56”,””,””,“B78”,“B56”,””,””,“G78”,“G56”,””,””,“I78”,“I56”,””,””,“H78”,“H56”,””,””,“D78”,“D56”,””,””,“F78”,“F56”,””,””,“E78”,“E56”],
+[“호흡기내과1(서울)”,“A56”,“A56”,“A124”,“A124”,“C56”,“C56”,“C124”,“C124”,“B56”,“B56”,“B124”,“B124”,“G56”,“G56”,“G124”,“G124”,“I56”,“I56”,“I124”,“I124”,“H56”,“H56”,“H124”,“H124”,“D56”,“D56”,“D124”,“D124”,“F56”,””,“F56 F124”,“F124”,“E56”,“E56”,“E124”,“E124”],
+[“호흡기내과2(구리)”,“A78”,“A78”,“A3”,“A3”,“C78”,“C78”,“C3”,“C3”,“B78”,“B78”,“B3”,“B3”,“G78”,“G78”,“G3”,“G3”,“I78”,“I78”,“I3”,“I3”,“H78”,“H78”,“H3”,“H3”,“D78”,“D78”,“D3”,“D3”,“F78”,“F78”,“F3”,“F3”,“E78”,“E78”,“E3”,“E3”],
+[“심장내과1(서울)”,””,””,“B5678”,“B5678”,””,””,“A5678”,“A5678”,“3 C234”,“C234”,“0”,“C678”,“H234”,“H234”,“H678”,“H678”,“G234”,“G234”,“G678”,“G678”,“I234”,“I234”,“I678”,“I678”,“E234”,“E234”,“E678”,“E678”,“D234”,“D234”,“D678”,“D678”,“F234”,“F234”,“F678”,“F678”],
+[“심장내과2(구리)”,“B1234”,“B1234”,””,””,“A1234”,“A1234”,””,””,“C1”,“C1”,“C5”,“C5”,“H1”,“H1”,“H5”,“H5”,“G1”,“G1”,“G5”,“G5”,“I1”,“I1”,“I5”,“I5”,“E1”,“E1”,“E5”,“E5”,“D1”,“D1”,“D5”,“D5”,“F1”,“F1”,“F5”,“F5”],
+[“신장내과1(서울)”,””,””,“B1234”,“B1234”,””,””,“A1234”,“A1234”,“C57”,“C57”,“C13”,“C13”,“H57”,“H57”,“H13”,“H13”,“G57”,“G57”,“G13”,“G13”,“I57”,“I57”,“I13”,“I13”,“E57”,“E57”,“E13”,“E13”,“D57”,“D57”,“D13”,“D13”,“F57”,“F57”,“F13”,“F13”],
+[“신장내과2(구리)”,“B5678”,“B5678”,””,””,“A5678”,“A5678”,””,””,“C68”,“C68”,“C24”,“C24”,“H68”,“H68”,“H24”,“H24”,“G68”,“G68”,“G24”,“G24”,“I68”,“I68”,“I24”,“I24”,“E68”,“E68”,“E24”,“E24”,“D68”,“D68”,“D24”,“D24”,“F68”,“F68”,“F24”,“F24”],
+[“류마티스내과(서울)”,””,“C34”,“C56”,””,“B12”,“B34”,“B56”,””,“A12”,“A34”,“A56”,””,“I12”,“I34”,“I56”,””,“H12”,“H34”,“H56”,””,“G12”,“G34”,“G56”,””,“F12”,“F34”,“F56”,””,“E12”,“E34”,“E56”,””,“D12”,“D34”,“D56”,””],
+[“류마티스내과(구리)”,“C12”,””,””,“C78”,””,””,””,“B78”,””,””,””,“A78”,””,””,””,“I78”,””,””,””,“H78”,””,””,””,“G78”,””,””,””,“F78”,””,””,””,“E78”,””,””,””,“D78”],
+[“혈액종양내과(서울)”,””,“C12”,””,“C56”,””,“B12”,””,“B56”,“A4”,“A1”,“A8”,“A5”,“I4”,“I1”,“I8”,“I5”,“H4”,“H1”,“H8”,“H5”,“G4”,“G1”,“G8”,“G5”,“F4”,“F1”,“F8”,“F5”,“E4”,“E1”,“E8”,“E5”,“D4”,“D1”,“D8”,“D5”],
+[“혈액종양내과(구리)”,“C34”,””,“C78”,””,“B34”,””,“B78”,””,“A3”,“A2”,“A7”,“A6”,“I3”,“I2”,“I7”,“I6”,“H3”,“H2”,“H7”,“H6”,“G3”,“G2”,“G7”,“G6”,“F3”,“F2”,“F7”,“F6”,“E3”,“E2”,“E7”,“E6”,“D3”,“D2”,“D7”,“D6”],
+[“내분비내과(서울)”,””,””,“C12”,””,“B56”,””,””,””,“A6”,“A8”,“A2”,“A4”,“I6”,“I8”,“I2”,“I4”,“H6”,“H8”,“H2”,“H4”,“G6”,“G8”,“G2”,“G4”,“F6”,“F8”,“F2”,“F4”,“E6”,“E8”,“E2”,“E4”,“D6”,“D8”,“D2”,“D4”],
+[“내분비내과(구리)”,“C56”,“C78”,””,“C34”,””,“B78”,””,“B34”,“A5”,“A7”,“A1”,“A3”,“I5”,“I7”,“I1”,“I3”,“H5”,“H7”,“H1”,“H3”,“G5”,“G7”,“G1”,“G3”,“F5”,“F7”,“F1”,“F3”,“E5”,“E7”,“E1”,“E3”,“D5”,“D7”,“D1”,“D3”],
+[“감염내과(서울)”,””,“C56”,“C34”,””,“B78”,””,””,“B12”,“A78”,“A56”,“A34”,“A12”,””,“I56”,“I34”,””,“H78”,“H56”,””,“H12”,“G78”,””,“G34”,“G12”,””,“F56”,“F34”,””,“E78”,“E56”,””,“E12”,“D78”,””,“D34”,“D12”],
+[“감염내과(구리)”,“C78”,””,””,“C12”,””,“B56”,“B34”,””,””,””,””,””,“I78”,””,””,“I12”,””,””,“H34”,””,””,“G56”,””,””,“F78”,””,””,“F12”,””,””,“E34”,””,””,“D56”,””,””],
+[“정형외과(서울)”,””,“D1-4”,””,“D5-8”,””,“F1-4”,””,“F5-8”,””,“E1-4”,””,“E5-8”,””,“A1-4”,””,“A5-8”,””,“C1-4”,””,“C5-8”,””,“B1-4”,””,“B5-8”,””,“G1-4”,””,“G5-8”,””,“I1-4”,””,“I5-8”,””,“H1-4”,””,“H5-8”],
+[“정형외과(구리)”,“D1-4”,””,“D5-8”,””,“F1-4”,””,“F5-8”,””,“E1-4”,””,“E5-8”,””,“A1-4”,””,“A5-8”,””,“C1-4”,””,“C5-8”,””,“B1-4”,””,“B5-8”,””,“G1-4”,””,“G5-8”,””,“I1-4”,””,“I5-8”,””,“H1-4”,””,“H5-8”,””],
+[“신경과(서울)”,””,“D5-8”,””,“D1-4”,””,“F5-8”,””,“F1-4”,””,“E5-8”,””,“E1-4”,””,“A5-8”,””,“A1-4”,””,“C5-8”,””,“C1-4”,””,“B5-8”,””,“B1-4”,””,“G5-8”,””,“G1-4”,””,“I5-8”,””,“I1-4”,””,“H5-8”,””,“H1-4”],
+[“신경과(구리)”,“D5-8”,””,“D1-4”,””,“F5-8”,””,“F1-4”,””,“E5-8”,””,“E1-4”,””,“A5-8”,””,“A1-4”,””,“C5-8”,””,“C1-4”,””,“B5-8”,””,“B1-4”,””,“G5-8”,””,“G1-4”,””,“I5-8”,””,“I1-4”,””,“H5-8”,””,“H1-4”,””],
+[“영상의학과(서울)”,“E1-4”,””,””,“E5-8”,””,“D1-4”,””,“D5-8”,””,“F1-4”,””,“F5-8”,””,“B1-4”,””,“B5-8”,””,“A1-4”,””,“A5-8”,””,“C1-4”,””,“C5-8”,””,“H1-4”,””,“H5-8”,””,“G1-4”,””,“G5-8”,””,“I1-4”,””,“I5-8”],
+[“영상의학과(구리)”,””,“E1-4”,“E5-8”,””,“D1-4”,””,“D5-8”,””,“F1-4”,””,“F5-8”,””,“B1-4”,””,“B5-8”,””,“A1-4”,””,“A5-8”,””,“C1-4”,””,“C5-8”,””,“H1-4”,””,“H5-8”,””,“G1-4”,””,“G5-8”,””,“I1-4”,””,“I5-8”,””],
+[“진단검사의학(서울)”,””,“E5-8”,””,“E1-4”,””,“D5-8”,””,“D1-4”,””,“F5-8”,””,“F1-4”,””,“B5-8”,””,“B1-4”,””,“A5-8”,””,“A1-4”,””,“C5-8”,””,“C1-4”,””,“H5-8”,””,“H1-4”,””,“G5-8”,””,“G1-4”,””,“I5-8”,””,“I1-4”],
+[“진단검사의학(구리)”,“E5-8”,””,“E1-4”,””,“D5-8”,””,“D1-4”,””,“F5-8”,””,“F1-4”,””,“B5-8”,””,“B1-4”,””,“A5-8”,””,“A1-4”,””,“C5-8”,””,“C1-4”,””,“H5-8”,””,“H1-4”,””,“G5-8”,””,“G1-4”,””,“I5-8”,””,“I1-4”,””],
+[“정신건강의학(서울A)”,“F12”,“F12”,””,“F12”,“E12”,“E12”,””,“E12”,“D12”,“D12”,””,“D12”,“C12”,“C12”,””,“C12”,“B12”,“B12”,””,“B12”,“A12”,“A12”,””,“A12”,“I12”,“I12”,””,“I12”,“H12”,“H12”,””,“H12”,“G12”,“G12”,””,“G12”],
+[“정신건강의학(서울B)”,“F34”,“F34”,“F34”,””,“E34”,“E34”,“E34”,””,“D34”,“D34”,“D34”,””,“C34”,“C34”,“C34”,””,“B34”,“B34”,“B34”,””,“A34”,“A34”,“A34”,””,“I34”,“I34”,“I34”,””,“H34”,“H34”,“H34”,””,“G34”,“G34”,“G34”,””],
+[“정신건강의학(서울C)”,””,“F56”,“F56”,“F56”,””,“E56”,“E56”,“E56”,””,“D56”,“D56”,“D56”,””,“C56”,“C56”,“C56”,””,“B56”,“B56”,“B56”,””,“A56”,“A56”,“A56”,””,“I56”,“I56”,“I56”,””,“H56”,“H56”,“H56”,””,“G56”,“G56”,“G56”],
+[“정신건강의학(서울D)”,“F78”,””,“F78”,“F78”,“E78”,””,“E78”,“E78”,“D78”,””,“D78”,“D78”,“C78”,””,“C78”,“C78”,“B78”,””,“B78”,“B78”,“A78”,””,“A78”,“A78”,“I78”,””,“I78”,“I78”,“H78”,””,“H78”,“H78”,“G78”,””,“G78”,“G78”],
+[“정신건강의학(구리)”,“F56”,“F78”,“F12”,“F34”,“E56”,“E78”,“E12”,“E34”,“D56”,“D78”,“D12”,“D34”,“C56”,“C78”,“C12”,“C34”,“B56”,“B78”,“B12”,“B34”,“A56”,“A78”,“A12”,“A34”,“I56”,“I78”,“I12”,“I34”,“H56”,“H78”,“H12”,“H34”,“G56”,“G78”,“G12”,“G34”],
+[“외과(서울)”,“G1-8”,“G1-8”,“G1-8”,“G1-8”,“I1-8”,“I1-8”,“I1-8”,“I1-8”,“H1-8”,“H1-8”,“H1-8”,“H1-8”,“D1-8”,“D1-8”,“D1-8”,“D1-8”,“F1-8”,“F1-8”,“F1-8”,“F1-8”,“E1-8”,“E1-8”,“E1-8”,“E1-8”,“A1-8”,“A1-8”,“A1-8”,“A1-8”,“C1-8”,“C1-8”,“C1-8”,“C1-8”,“B1-8”,“B1-8”,“B1-8”,“B1-8”],
+[“산부인과(서울A)”,””,””,””,””,””,””,””,””,””,“I12”,“I12”,“I12”,””,“E12”,“E12”,“E12”,””,“D12”,“D12”,“D12”,””,“F12”,“F12”,“F12”,””,“B12”,“B12”,“B12”,””,“A12”,“A12”,“A12”,””,“C12”,“C12”,“C12”],
+[“산부인과(서울B)”,””,””,””,””,””,””,””,””,“I34”,””,“I34”,“I34”,“E34”,””,“E34”,“E34”,“D34”,””,“D34”,“D34”,“F34”,””,“F34”,“F34”,“B34”,””,“B34”,“B34”,“A34”,””,“A34”,“A34”,“C34”,””,“C34”,“C34”],
+[“산부인과(서울C)”,””,””,””,””,””,””,””,””,“I56”,“I56”,””,“I56”,“E56”,“E56”,””,“E56”,“D56”,“D56”,””,“D56”,“F56”,“F56”,””,“F56”,“B56”,“B56”,””,“B56”,“A56”,“A56”,””,“A56”,“C56”,“C56”,””,“C56”],
+[“산부인과(서울D)”,””,””,””,””,””,””,””,””,“I78”,“I78”,“I78”,””,“E78”,“E78”,“E78”,””,“D78”,“D78”,“D78”,””,“F78”,“F78”,“F78”,””,“B78”,“B78”,“B78”,””,“A78”,“A78”,“A78”,””,“C78”,“C78”,“C78”,””],
+[“산부인과(구리A)”,“H12”,“H12”,“H12”,“H12”,“G12”,“G12”,“G12”,“G12”,“I12”,””,””,””,“E12”,””,””,””,“D12”,””,””,””,“F12”,””,””,””,“B12”,””,””,””,“A12”,””,””,””,“C12”,””,””,””],
+[“산부인과(구리B)”,“H34”,“H34”,“H34”,“H34”,“G34”,“G34”,“G34”,“G34”,””,“I34”,””,””,””,“E34”,””,””,””,“D34”,””,””,””,“F34”,””,””,””,“B34”,””,””,””,“A34”,””,””,””,“C34”,””,””],
+[“산부인과(구리C)”,“H56”,“H56”,“H56”,“H56”,“G56”,“G56”,“G56”,“G56”,””,””,“I56”,””,””,””,“E56”,””,””,””,“D56”,””,””,””,“F56”,””,””,””,“B56”,””,””,””,“A56”,””,””,””,“C56”,””],
+[“산부인과(구리D)”,“H78”,“H78”,“H78”,“H78”,“G78”,“G78”,“G78”,“G78”,””,””,””,“I78”,””,””,””,“E78”,””,””,””,“D78”,””,””,””,“F78”,””,””,””,“B78”,””,””,””,“A78”,””,””,””,“C78”],
+[“소아청소년과(서울A)”,“I12”,“I12”,“I12”,””,“H12”,“H12”,“H12”,””,“G12”,“G12”,“G12”,””,“F12”,“F12”,“F12”,””,“E12”,“E12”,“E12”,””,“D12”,“D12”,“D12”,””,“C12”,“C12”,“C12”,””,“B12”,“B12”,“B12”,””,“A12”,“A12”,“A12”,””],
+[“소아청소년과(서울B)”,“I34”,“I34”,””,“I34”,“H34”,“H34”,””,“H34”,“G34”,“G34”,””,“G34”,“F34”,“F34”,””,“F34”,“E34”,“E34”,””,“E34”,“D34”,“D34”,””,“D34”,“C34”,“C34”,””,“C34”,“B34”,“B34”,””,“B34”,“A34”,“A34”,””,“A34”],
+[“소아청소년과(서울C)”,“I56”,””,“I56”,“I56”,“H56”,””,“H56”,“H56”,“G56”,””,“G56”,“G56”,“F56”,””,“F56”,“F56”,“E56”,””,“E56”,“E56”,“D56”,””,“D56”,“D56”,“C56”,””,“C56”,“C56”,“B56”,””,“B56”,“B56”,“A56”,””,“A56”,“A56”],
+[“소아청소년과(서울D)”,””,“I78”,“I78”,“I78”,””,“H78”,“H78”,“H78”,””,“G78”,“G78”,“G78”,””,“F78”,“F78”,“F78”,””,“E78”,“E78”,“E78”,””,“D78”,“D78”,“D78”,””,“C78”,“C78”,“C78”,””,“B78”,“B78”,“B78”,””,“A78”,“A78”,“A78”],
+[“소아청소년과(구리)”,“I78”,“I56”,“I34”,“I12”,“H78”,“H56”,“H34”,“H12”,“G78”,“G56”,“G34”,“G12”,“F78”,“F56”,“F34”,“F12”,“E78”,“E56”,“E34”,“E12”,“D78”,“D56”,“D34”,“D12”,“C78”,“C56”,“C34”,“C12”,“B78”,“B56”,“B34”,“B12”,“A78”,“A56”,“A34”,“A12”],
+];
+
+// ── DATE LOGIC ────────────────────────────────────────────────────────
+function weekStart(w){
+if(w===1) return new Date(2026,1,9);
+if(w<=24) return new Date(2026,1,23+(w-2)*7);
+return new Date(2026,1,23+(w-2)*7+21);
+}
+function weekDates(w){const s=weekStart(w);const e=new Date(s);e.setDate(e.getDate()+4);return{s,e};}
+function fmtD(d){return `${d.getMonth()+1}/${d.getDate()}`;}
+function fmtFull(d){return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;}
+
+const SUMMER_START=new Date(2026,7,1);
+const SUMMER_END=new Date(2026,7,23);
+function curWeek(){
+const n=new Date();
+const ss=new Date(SUMMER_START);ss.setHours(0,0,0,0);
+const se=new Date(SUMMER_END);se.setHours(23,59,59,999);
+if(n>=ss&&n<=se) return “summer”;
+for(let w=36;w>=1;w–) if(n>=weekStart(w)) return w;
+return null;
+}
+function dDay(){const n=new Date();n.setHours(0,0,0,0);const t=new Date(SUMMER_START);t.setHours(0,0,0,0);return Math.ceil((t-n)/(864e5));}
+function isSummerBreak(){const n=new Date();const ss=new Date(SUMMER_START);ss.setHours(0,0,0,0);const se=new Date(SUMMER_END);se.setHours(23,59,59,999);return n>=ss&&n<=se;}
+function weekendAfter(w){const e=weekDates(w).e;const sat=new Date(e);sat.setDate(sat.getDate()+1);const sun=new Date(e);sun.setDate(sun.getDate()+2);return{sat,sun};}
+function weekendBefore1(){const s=weekStart(1);const sun=new Date(s);sun.setDate(sun.getDate()-1);const sat=new Date(s);sat.setDate(sat.getDate()-2);return{sat,sun};}
+function isCurrentWeekend(sat,sun){const now=new Date();const ss=new Date(sat);ss.setHours(0,0,0,0);const se=new Date(sun);se.setHours(23,59,59,999);return now>=ss&&now<=se;}
+function isLunarBreak(){const now=new Date();const s=new Date(2026,1,14);s.setHours(0,0,0,0);const e=new Date(2026,1,22);e.setHours(23,59,59,999);return now>=s&&now<=e;}
+
+// ── PARSING ───────────────────────────────────────────────────────────
+function parse(code){
+if(!code||!code.trim()||code===“0”) return [];
+if(code===“3 C234”) return [{g:“C”,ns:[2,3,4]}];
+const r=[];
+for(const p of code.trim().split(/\s+/)){
+const m=p.match(/^([A-I])(.+)$/);if(!m) continue;
+const g=m[1],np=m[2];
+if(np.includes(”-”)){const[a,b]=np.split(”-”).map(Number);const ns=[];for(let i=a;i<=b;i++)ns.push(i);r.push({g,ns});}
+else r.push({g,ns:np.split(””).map(Number)});
+}
+return r;
+}
+function isIn(cell,tg,tn){return parse(cell).some(p=>p.g===tg&&p.ns.includes(tn));}
+function coMem(cell,tg,tn){const names=[];for(const p of parse(cell))for(const n of p.ns){if(p.g===tg&&n===tn)continue;const nm=MEMBERS[p.g]?.[n];if(nm)names.push(nm);}return names;}
+
+// ── THEMES ────────────────────────────────────────────────────────────
+const T={
+dark:{
+bg:“linear-gradient(160deg,#0c1220,#141e30 50%,#0c1220)”,
+card:“rgba(22,33,52,0.75)”,cardB:“rgba(71,85,105,0.2)”,
+surf:“rgba(15,23,42,0.5)”,tx:”#e2e8f0”,tx2:”#94a3b8”,tx3:”#64748b”,tx4:”#475569”,
+acc:”#60a5fa”,accG:“linear-gradient(135deg,#3b82f6,#6366f1)”,
+inBg:“rgba(30,41,59,0.8)”,inB:“rgba(100,116,139,0.3)”,inF:“rgba(96,165,250,0.6)”,
+curBg:“linear-gradient(135deg,rgba(59,130,246,0.18),rgba(99,102,241,0.12))”,curB:“rgba(59,130,246,0.5)”,
+pastOp:0.4,gl1:“rgba(59,130,246,0.07)”,gl2:“rgba(139,92,246,0.05)”,
+sB:“rgba(37,99,235,0.12)”,sT:”#93c5fd”,sBr:“rgba(96,165,250,0.25)”,
+gB:“rgba(251,191,36,0.1)”,gT:”#fbbf24”,gBr:“rgba(251,191,36,0.2)”,
+ddBg:“linear-gradient(135deg,#1a2744,#1e293b)”,ddB:“rgba(59,130,246,0.3)”,
+iBg:“linear-gradient(135deg,rgba(59,130,246,0.12),rgba(139,92,246,0.08))”,iB:“rgba(59,130,246,0.2)”,
+wBg:“rgba(59,130,246,0.08)”,wB:“rgba(59,130,246,0.2)”,
+qBg:“rgba(30,41,59,0.5)”,qB:“rgba(100,116,139,0.2)”,qH:“rgba(59,130,246,0.15)”,
+aB:“rgba(15,23,42,0.5)”,scr:“rgba(100,116,139,0.3)”,ddTx:”#fbbf24”,
+wkLine:“rgba(71,85,105,0.35)”,wkLineCur:“rgba(96,165,250,0.5)”,wkBadge:“rgba(30,41,59,0.8)”,wkBadgeCur:“rgba(37,99,235,0.25)”,wkTx:”#64748b”,wkTxCur:”#93c5fd”,
+},
+light:{
+bg:“linear-gradient(160deg,#f1f5f9,#e8edf3 50%,#f1f5f9)”,
+card:“rgba(255,255,255,0.85)”,cardB:“rgba(203,213,225,0.5)”,
+surf:“rgba(255,255,255,0.65)”,tx:”#1e293b”,tx2:”#475569”,tx3:”#94a3b8”,tx4:”#cbd5e1”,
+acc:”#2563eb”,accG:“linear-gradient(135deg,#2563eb,#7c3aed)”,
+inBg:“rgba(255,255,255,0.9)”,inB:“rgba(203,213,225,0.6)”,inF:“rgba(37,99,235,0.5)”,
+curBg:“linear-gradient(135deg,rgba(59,130,246,0.1),rgba(99,102,241,0.06))”,curB:“rgba(59,130,246,0.4)”,
+pastOp:0.38,gl1:“rgba(59,130,246,0.04)”,gl2:“rgba(139,92,246,0.03)”,
+sB:“rgba(37,99,235,0.08)”,sT:”#2563eb”,sBr:“rgba(37,99,235,0.2)”,
+gB:“rgba(217,119,6,0.08)”,gT:”#b45309”,gBr:“rgba(217,119,6,0.2)”,
+ddBg:“linear-gradient(135deg,#dbeafe,#ede9fe)”,ddB:“rgba(59,130,246,0.2)”,
+iBg:“linear-gradient(135deg,rgba(59,130,246,0.08),rgba(139,92,246,0.05))”,iB:“rgba(59,130,246,0.15)”,
+wBg:“rgba(59,130,246,0.06)”,wB:“rgba(59,130,246,0.15)”,
+qBg:“rgba(255,255,255,0.7)”,qB:“rgba(203,213,225,0.5)”,qH:“rgba(59,130,246,0.1)”,
+aB:“rgba(241,245,249,0.8)”,scr:“rgba(148,163,184,0.4)”,ddTx:”#d97706”,
+wkLine:“rgba(203,213,225,0.5)”,wkLineCur:“rgba(59,130,246,0.45)”,wkBadge:“rgba(255,255,255,0.9)”,wkBadgeCur:“rgba(219,234,254,0.9)”,wkTx:”#94a3b8”,wkTxCur:”#2563eb”,
+}
+};
+
+const DC={“소화기내과”:”#ef4444”,“호흡기내과”:”#f97316”,“심장내과”:”#dc2626”,“신장내과”:”#ea580c”,“류마티스내과”:”#d97706”,“혈액종양내과”:”#9333ea”,“내분비내과”:”#2563eb”,“감염내과”:”#059669”,“정형외과”:”#0891b2”,“신경과”:”#7c3aed”,“영상의학과”:”#6366f1”,“진단검사의학”:”#4f46e5”,“정신건강의학”:”#0d9488”,“외과”:”#be123c”,“산부인과”:”#db2777”,“소아청소년과”:”#16a34a”};
+function db(d){return d.replace(/\d.*$/,””).replace(/(.*)/,””).replace(/[A-D]$/,””);}
+
+// ── DIVIDER ───────────────────────────────────────────────────────────
+function WeekendDivider({sat,sun,isCurrent,c,isLunar,isSummer}){
+const label=isSummer?`🏖️ 여름방학  ${fmtD(sat)}~${fmtD(sun)}`:isLunar?`🎊 설날 연휴  ${fmtD(sat)}~${fmtD(sun)}`:`${fmtD(sat)}~${fmtD(sun)}`;
+const isSpecial=isLunar||isSummer;
+return(
+<div style={{display:“flex”,alignItems:“center”,gap:0,padding:isCurrent?“6px 0”:“4px 0”,position:“relative”}}>
+<div style={{flex:1,height:isCurrent?2:1,background:isCurrent?(isSummer?“rgba(251,191,36,0.5)”:c.wkLineCur):c.wkLine,borderRadius:1,transition:“all .2s”}}/>
+<div style={{flexShrink:0,padding:(isCurrent||isSpecial)?“3px 10px”:“2px 8px”,borderRadius:10,background:isCurrent?(isSummer?“rgba(251,191,36,0.15)”:c.wkBadgeCur):c.wkBadge,border:`1px solid ${isCurrent?(isSummer?"rgba(251,191,36,0.4)":c.wkLineCur):c.wkLine}`,fontSize:10,fontWeight:(isCurrent||isSpecial)?700:600,color:isCurrent?(isSummer?”#fbbf24”:c.wkTxCur):c.wkTx,letterSpacing:0.2,whiteSpace:“nowrap”,transition:“all .2s”,…(isCurrent?{boxShadow:`0 0 8px ${isSummer?"rgba(251,191,36,0.3)":c.wkLineCur}`}:{})}}>
+{isSpecial?label:`주말 ${label}`}
+</div>
+</div>
+);
+}
+
+// ── COOKIES ───────────────────────────────────────────────────────────
+function setCookie(k,v,days=365){const d=new Date();d.setTime(d.getTime()+days*864e5);document.cookie=`${k}=${encodeURIComponent(v)};expires=${d.toUTCString()};path=/;SameSite=Lax`;}
+function getCookie(k){const m=document.cookie.match(new RegExp(’(?:^|; )’+k+’=([^;]*)’));return m?decodeURIComponent(m[1]):null;}
+
+// ── APP ───────────────────────────────────────────────────────────────
+function App(){
+const [mode,setMode]=useState(()=>getCookie(“sch_mode”)||“light”);
+const [input,setInput]=useState(””);
+const [res,setRes]=useState(null);
+const [err,setErr]=useState(””);
+const [page,setPage]=useState(“home”);
+const highlightRef=useRef(null);
+const c=T[mode],cw=curWeek(),dd=dDay();
+const initDone=useRef(false);
+
+useEffect(()=>{setCookie(“sch_mode”,mode);},[mode]);
+useEffect(()=>{if(initDone.current)return;initDone.current=true;const saved=getCookie(“sch_last”);if(saved){try{const{g,n}=JSON.parse(saved);if(MEMBERS[g]?.[n])build(g,n);}catch(e){}};},[]);
+useEffect(()=>{if(res&&highlightRef.current)setTimeout(()=>highlightRef.current?.scrollIntoView({behavior:“smooth”,block:“center”}),300);},[res]);
+
+function doSearch(){
+const v=input.trim();if(!v)return;
+const cm=v.toUpperCase().match(/^([A-I])(\d)$/);
+if(cm){const g=cm[1],n=+cm[2];if(MEMBERS[g]?.[n]){build(g,n);return;}}
+const f=NAME_LOOKUP[v];if(f){build(f.group,f.number);return;}
+const ms=Object.keys(NAME_LOOKUP).filter(n=>n.includes(v));
+if(ms.length===1){const x=NAME_LOOKUP[ms[0]];build(x.group,x.number);return;}
+if(ms.length>1){setErr(`여러 명 검색됨: ${ms.join(", ")}`);setRes(null);return;}
+setErr(“검색 결과 없음. 조번호(예: C3) 또는 이름을 입력하세요.”);setRes(null);
+}
+
+function build(g,n){
+setErr(””);setCookie(“sch_last”,JSON.stringify({g,n}));
+const name=MEMBERS[g]?.[n]||””;const weeks=[];
+for(let w=1;w<=36;w++){const assigns=[];RAW.forEach(row=>{const dept=row[0],cell=row[w]||””;if(isIn(cell,g,n))assigns.push({dept,co:coMem(cell,g,n),cell});});weeks.push({w,d:weekDates(w),a:assigns});}
+setRes({g,n,name,weeks});setPage(“schedule”);
+}
+function goHome(){setPage(“home”);setRes(null);setErr(””);}
+
+const Ico=(p)=><svg width={p.s||18} height={p.s||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.w||2.5} strokeLinecap="round" strokeLinejoin="round">{p.children}</svg>;
+
+return(
+<div style={{minHeight:“100vh”,background:c.bg,fontFamily:”‘Pretendard’,‘Apple SD Gothic Neo’,‘Noto Sans KR’,sans-serif”,color:c.tx,position:“relative”,overflow:“hidden”}}>
+<div style={{position:“fixed”,top:”-200px”,right:”-200px”,width:“600px”,height:“600px”,background:`radial-gradient(circle,${c.gl1},transparent 70%)`,borderRadius:“50%”,pointerEvents:“none”}}/>
+<div style={{position:“fixed”,bottom:”-300px”,left:”-100px”,width:“500px”,height:“500px”,background:`radial-gradient(circle,${c.gl2},transparent 70%)`,borderRadius:“50%”,pointerEvents:“none”}}/>
+<div style={{maxWidth:“800px”,margin:“0 auto”,padding:“0 20px”}}>
+
+```
+    {/* HEADER */}
+    <header style={{padding:"20px 0 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+        {page==="schedule"&&(
+          <button onClick={goHome} style={{width:36,height:36,borderRadius:10,border:`1px solid ${c.cardB}`,background:c.card,color:c.tx2,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all .15s",backdropFilter:"blur(12px)",flexShrink:0}}
+            onMouseEnter={e=>{e.currentTarget.style.background=c.qH;e.currentTarget.style.color=c.acc}}
+            onMouseLeave={e=>{e.currentTarget.style.background=c.card;e.currentTarget.style.color=c.tx2}}>
+            <Ico><path d="M15 18l-6-6 6-6"/></Ico>
+          </button>)}
+        <div>
+          <h1 style={{fontSize:20,fontWeight:800,margin:0,background:c.accG,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"-0.5px"}}>📋 실습 스케줄러</h1>
+          <p style={{fontSize:11,color:c.tx3,margin:"2px 0 0"}}>Clinical Rotation Schedule</p>
+        </div>
+      </div>
+      <button onClick={()=>setMode(m=>m==="dark"?"light":"dark")} style={{width:36,height:36,borderRadius:10,border:`1px solid ${c.cardB}`,background:c.card,color:c.tx2,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all .2s",backdropFilter:"blur(12px)"}}
+        onMouseEnter={e=>{e.currentTarget.style.background=c.qH;e.currentTarget.style.color=c.acc}}
+        onMouseLeave={e=>{e.currentTarget.style.background=c.card;e.currentTarget.style.color=c.tx2}}>
+        {mode==="dark"?<Ico s={17} w={2}><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></Ico>:<Ico s={17} w={2}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></Ico>}
+      </button>
+    </header>
+
+    {/* D-DAY + WEEK */}
+    <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
+      <div style={{flex:"1 1 auto",background:c.ddBg,border:`1px solid ${c.ddB}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10,minWidth:155}}>
+        <span style={{fontSize:26}}>🏖️</span>
+        <div>
+          <div style={{fontSize:10,color:c.tx3,letterSpacing:1,textTransform:"uppercase",fontWeight:600}}>여름방학</div>
+          <div style={{fontSize:24,fontWeight:900,lineHeight:1,color:c.ddTx}}>{cw==="summer"?"방학중 🎉":dd>0?`D-${dd}`:dd===0?"D-DAY 🎉":`D+${Math.abs(dd)}`}</div>
+          <div style={{fontSize:10,color:c.tx3,marginTop:2}}>8/1 ~ 8/23</div>
+        </div>
+      </div>
+      {cw&&cw!=="summer"&&(
+        <div style={{flex:"1 1 auto",background:c.wBg,border:`1px solid ${c.wB}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10,minWidth:155}}>
+          <Ico s={20} w={2}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Ico>
+          <div>
+            <div style={{fontSize:10,color:c.tx3,letterSpacing:1,textTransform:"uppercase",fontWeight:600}}>현재</div>
+            <div style={{fontSize:20,fontWeight:800,color:c.acc,lineHeight:1}}>{cw}주차</div>
+            <div style={{fontSize:10,color:c.tx3,marginTop:2}}>{fmtD(weekDates(cw).s)} ~ {fmtD(weekDates(cw).e)}</div>
+          </div>
+        </div>)}
+      {cw==="summer"&&(
+        <div style={{flex:"1 1 auto",background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.2)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10,minWidth:155}}>
+          <span style={{fontSize:20}}>☀️</span>
+          <div>
+            <div style={{fontSize:10,color:c.tx3,letterSpacing:1,textTransform:"uppercase",fontWeight:600}}>현재</div>
+            <div style={{fontSize:20,fontWeight:800,color:"#fbbf24",lineHeight:1}}>방학중</div>
+            <div style={{fontSize:10,color:c.tx3,marginTop:2}}>25주차 8/24 복귀</div>
+          </div>
+        </div>)}
+    </div>
+
+    {/* SEARCH */}
+    <div style={{display:"flex",gap:8,marginTop:16}}>
+      <div style={{flex:1,position:"relative"}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doSearch();}}
+          placeholder="조번호 (예: C3) 또는 이름 입력"
+          style={{width:"100%",padding:"13px 16px 13px 42px",borderRadius:14,border:`1px solid ${c.inB}`,background:c.inBg,backdropFilter:"blur(20px)",color:c.tx,fontSize:15,outline:"none",transition:"all .2s",boxSizing:"border-box"}}
+          onFocus={e=>{e.target.style.borderColor=c.inF;e.target.style.boxShadow=`0 0 0 3px ${c.inF}33`;}}
+          onBlur={e=>{e.target.style.borderColor=c.inB;e.target.style.boxShadow="none";}}/>
+        <div style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:c.tx3}}>
+          <Ico s={17}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></Ico>
+        </div>
+      </div>
+      <button onClick={doSearch} style={{padding:"13px 22px",borderRadius:14,border:"none",background:c.accG,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",transition:"all .2s",whiteSpace:"nowrap"}}
+        onMouseEnter={e=>e.currentTarget.style.opacity="0.85"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>검색</button>
+    </div>
+    {err&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:"12px 16px",color:"#fca5a5",fontSize:13,marginTop:12}}>{err}</div>}
+
+    {/* HOME */}
+    {page==="home"&&!res&&(
+      <div style={{marginTop:24,paddingBottom:40}}>
+        <p style={{fontSize:12,color:c.tx3,marginBottom:14,fontWeight:600,letterSpacing:"0.5px"}}>빠른 검색</p>
+        {["A","B","C","D","E","F","G","H","I"].map(g=>(
+          <div key={g} style={{marginBottom:10}}>
+            <div style={{fontSize:11,color:c.tx3,marginBottom:5,fontWeight:700}}>{g}조</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {[1,2,3,4,5,6,7,8].map(n=>(
+                <button key={n} onClick={()=>{setInput(`${g}${n}`);build(g,n);}}
+                  style={{padding:"8px 0",width:72,borderRadius:10,border:`1px solid ${c.qB}`,background:c.qBg,color:c.tx2,fontSize:12,cursor:"pointer",transition:"all .15s",fontWeight:600,backdropFilter:"blur(8px)",textAlign:"center"}}
+                  onMouseEnter={e=>{e.currentTarget.style.background=c.qH;e.currentTarget.style.color=c.acc;e.currentTarget.style.borderColor=c.acc+"44";}}
+                  onMouseLeave={e=>{e.currentTarget.style.background=c.qBg;e.currentTarget.style.color=c.tx2;e.currentTarget.style.borderColor=c.qB;}}>
+                  <div style={{fontWeight:700}}>{g}{n}</div>
+                  <div style={{fontSize:10,marginTop:2,opacity:.7,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 4px"}}>{(MEMBERS[g][n]||"").split(",")[0].trim()}</div>
+                </button>))}
+            </div>
+          </div>))}
+        <div style={{textAlign:"center",marginTop:32,padding:"20px 0"}}>
+          <div style={{fontSize:42,marginBottom:12}}>🩺</div>
+          <p style={{fontSize:14,color:c.tx2,fontWeight:600}}>조번호 또는 이름으로 검색하세요</p>
+          <p style={{fontSize:12,color:c.tx3,lineHeight:1.6,marginTop:4}}>36주차 전체 실습 일정을 한눈에 확인할 수 있습니다</p>
+        </div>
+      </div>)}
+
+    {/* SCHEDULE */}
+    {page==="schedule"&&res&&(
+      <div style={{paddingBottom:80}}>
+        <div style={{background:c.iBg,border:`1px solid ${c.iB}`,borderRadius:18,padding:"18px 20px",marginTop:16,position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-30,right:-30,width:100,height:100,background:`radial-gradient(circle,${c.gl1},transparent)`,borderRadius:"50%"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{width:52,height:52,borderRadius:14,background:c.accG,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:900,color:"#fff",flexShrink:0}}>{res.g}{res.n}</div>
+            <div>
+              <h2 style={{margin:0,fontSize:19,fontWeight:800}}>{res.name}</h2>
+              <p style={{margin:"3px 0 0",fontSize:12,color:c.tx2}}>{res.g}조 {res.n}번 · 36주차 실습</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:16}}>
+          {res.weeks.map(({w,d,a})=>{
+            const isCur=(typeof cw==="number")&&w===cw;
+            const isPast=(typeof cw==="number")?w<cw:(cw==="summer"&&w<=24);
+            const hasA=a.length>0;
+            let divider=null,dividerIsCurrent=false;
+
+            if(w===1){const wb=weekendBefore1();dividerIsCurrent=new Date()<weekStart(1);divider=<div key="wd-0" ref={dividerIsCurrent?highlightRef:null}><WeekendDivider sat={wb.sat} sun={wb.sun} isCurrent={dividerIsCurrent} c={c}/></div>;}
+            else if(w===2){dividerIsCurrent=isLunarBreak();divider=<div key="wd-lunar" ref={dividerIsCurrent?highlightRef:null}><WeekendDivider sat={new Date(2026,1,14)} sun={new Date(2026,1,22)} isCurrent={dividerIsCurrent} c={c} isLunar={true}/></div>;}
+            else if(w===25){dividerIsCurrent=isSummerBreak();divider=<div key="wd-summer" ref={dividerIsCurrent?highlightRef:null}><WeekendDivider sat={SUMMER_START} sun={SUMMER_END} isCurrent={dividerIsCurrent} c={c} isSummer={true}/></div>;}
+            else{const wb=weekendAfter(w-1);dividerIsCurrent=isCurrentWeekend(wb.sat,wb.sun);divider=<div key={`wd-${w}`} ref={dividerIsCurrent?highlightRef:null}><WeekendDivider sat={wb.sat} sun={wb.sun} isCurrent={dividerIsCurrent} c={c}/></div>;}
+
+            const weekCard=(
+              <div key={w} ref={isCur&&!dividerIsCurrent?highlightRef:null} style={{background:isCur?c.curBg:c.surf,border:isCur?`2px solid ${c.curB}`:`1px solid ${c.cardB}`,borderRadius:14,padding:isCur?"15px 16px":"13px 16px",opacity:isPast?c.pastOp:1,transition:"all .2s",position:"relative"}}>
+                {isCur&&<div style={{position:"absolute",top:8,right:10,background:c.accG,color:"#fff",fontSize:10,fontWeight:800,padding:"3px 10px",borderRadius:20,letterSpacing:.3,animation:"pulse 2s ease-in-out infinite"}}>📍 현재</div>}
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:hasA?10:0}}>
+                  <span style={{fontSize:13,fontWeight:800,color:isCur?c.acc:c.tx2,minWidth:48}}>{w}주차</span>
+                  <span style={{fontSize:12,color:isCur?c.acc+"cc":c.tx3}}>{fmtFull(d.s)} ~ {fmtFull(d.e)}</span>
+                </div>
+                {hasA?(<div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  {a.map((x,i)=>{const isS=x.dept.includes("서울");const dc=DC[db(x.dept)]||"#6b7280";const loc=isS?{bg:c.sB,tx:c.sT,br:c.sBr}:{bg:c.gB,tx:c.gT,br:c.gBr};
+                    return(<div key={i} style={{background:c.aB,borderRadius:10,padding:"10px 12px",borderLeft:`3px solid ${dc}`}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <span style={{fontSize:13,fontWeight:700}}>{x.dept.replace(/[A-D](?=\))/g,"")}</span>
+                        <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,padding:"2px 7px",borderRadius:6,fontWeight:600,background:loc.bg,color:loc.tx,border:`1px solid ${loc.br}`}}>
+                          <Ico s={10} w={2.5}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></Ico>
+                          {isS?"서울":"구리"}
+                        </span>
+                      </div>
+                      {x.co.length>0&&(<div style={{display:"flex",alignItems:"flex-start",gap:5,marginTop:6,fontSize:11,color:c.tx2,lineHeight:1.5}}>
+                        <Ico s={12} w={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Ico>
+                        <span>{x.co.join(", ")}</span></div>)}
+                    </div>);})}
+                </div>):(<div style={{fontSize:11,color:c.tx4,fontStyle:"italic"}}>배정 없음</div>)}
+              </div>);
+
+            if(w===36){const wb=weekendAfter(36);const endIsCur=isCurrentWeekend(wb.sat,wb.sun);return[divider,weekCard,<div key="wd-end" ref={endIsCur?highlightRef:null}><WeekendDivider sat={wb.sat} sun={wb.sun} isCurrent={endIsCur} c={c}/></div>];}
+            return[divider,weekCard];
+          })}
+        </div>
+
+        <button onClick={goHome} style={{position:"fixed",bottom:24,right:24,width:48,height:48,borderRadius:"50%",background:c.accG,border:"none",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 4px 20px rgba(59,130,246,0.4)",transition:"all .2s",zIndex:100}}
+          onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+      </div>)}
+  </div>
+  <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.65}}`}</style>
+</div>
+```
+
+);
+}
+
+ReactDOM.createRoot(document.getElementById(“root”)).render(<App/>);
+</script>
+
+</body>
+</html>
